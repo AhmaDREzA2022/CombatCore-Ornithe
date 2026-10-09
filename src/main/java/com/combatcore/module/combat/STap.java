@@ -7,13 +7,17 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
 
 /**
- * S-Tap: briefly presses S (backwards) after landing a hit. Forward input
- * drops to the sprint threshold for the duration, which cancels sprinting -
- * same sprint-reset idea as W-Tap, but without releasing W, so momentum is
- * kept while sprint is reset.
+ * S-Tap: after landing a hit, releases W and briefly presses S (backwards)
+ * for the configured duration.
+ *
+ * <p>Releasing forward is what actually cancels sprint in 1.8.9 - the game
+ * only drops sprint when there is no forward/strafe input, so pressing S
+ * alone while W is held does nothing to sprint state. The S press on top of
+ * the release is what distinguishes this from a W-Tap: it gives the classic
+ * camera-forward feel and a short reversal while sprint resets.
  *
  * <p>Settings: delay (ticks after the hit, 0 = next tick) and duration
- * (how long S is held, in ticks).
+ * (how long the keys are held, in ticks).
  */
 public class STap extends Module {
 
@@ -43,6 +47,7 @@ public class STap extends Module {
 		if (this.pressTicksLeft > 0) {
 			if (--this.pressTicksLeft == 0) {
 				Keys.restore(client.options.backKey);
+				Keys.restore(client.options.forwardKey);
 			}
 			return;
 		}
@@ -55,8 +60,10 @@ public class STap extends Module {
 			return;
 		}
 
-		// Delay elapsed: hold S for the configured duration.
+		// Delay elapsed: release W (this is what cancels sprint) and hold S
+		// for the configured duration.
 		this.actionTimer = -1;
+		Keys.set(client.options.forwardKey, false);
 		Keys.press(client.options.backKey);
 		this.pressTicksLeft = this.duration.getValue();
 	}
@@ -68,6 +75,7 @@ public class STap extends Module {
 		Minecraft client = Minecraft.getInstance();
 		if (client != null && client.options != null) {
 			Keys.restore(client.options.backKey);
+			Keys.restore(client.options.forwardKey);
 		}
 	}
 }
