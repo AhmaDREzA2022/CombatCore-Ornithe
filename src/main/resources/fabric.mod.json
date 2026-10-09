@@ -1,0 +1,25 @@
+{
+	"schemaVersion": 1,
+	"id": "combatcore",
+	"version": "${version}",
+	"name": "Combat Core",
+	"description": "Lightweight client-side PvP helper for 1.8.9: W-Tap, S-Tap, Jump Reset and Block Hit with a ClickGUI. No reach, aim or other cheat modules.",
+	"authors": [
+		"You"
+	],
+	"contact": {},
+	"license": "CC0-1.0",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.combatcore.CombatCoreMod"
+		]
+	},
+	"mixins": [
+		"combatcore.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.14.0",
+		"minecraft": "1.8.9"
+	}
+}
