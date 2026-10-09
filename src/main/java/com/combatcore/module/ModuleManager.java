@@ -7,6 +7,7 @@ import com.combatcore.module.combat.STap;
 import com.combatcore.module.combat.WTap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.living.LivingEntity;
 import net.minecraft.text.LiteralText;
 
 import java.util.ArrayList;
@@ -30,7 +31,8 @@ import java.util.List;
  *       world and no screen open,</li>
  *   <li>when a screen opens, every enabled module has its simulated keys
  *       restored once, so no tap can leak into a menu,</li>
- *   <li>{@code onAttack} only runs for enabled modules.</li>
+ *   <li>{@code onAttack} only runs for enabled modules and only for
+ *       non-null, non-self {@link LivingEntity} targets.</li>
  * </ul>
  */
 public final class ModuleManager {
@@ -96,6 +98,13 @@ public final class ModuleManager {
 	public void onAttack(Entity target) {
 		Minecraft client = Minecraft.getInstance();
 		if (client == null || client.screen != null || client.player == null) {
+			return;
+		}
+
+		// Only living targets are combat. Vanilla also routes item frames,
+		// paintings, boats, minecarts, arrows and XP orbs through here, and
+		// firing combat modules on those just produces random stutters.
+		if (target == null || target == client.player || !(target instanceof LivingEntity)) {
 			return;
 		}
 
