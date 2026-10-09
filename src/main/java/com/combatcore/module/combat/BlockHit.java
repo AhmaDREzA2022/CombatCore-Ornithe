@@ -2,8 +2,9 @@ package com.combatcore.module.combat;
 
 import com.combatcore.module.Module;
 import com.combatcore.module.setting.NumberSetting;
-import com.combatcore.util.Keys;
+import com.combatcore.util.KeySequence;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.options.KeyBinding;
 import net.minecraft.entity.Entity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.SwordItem;
@@ -17,9 +18,10 @@ import net.minecraft.item.SwordItem;
  * {@code Minecraft.doUse()}, so the block respects every vanilla rule
  * (reach, cooldown, "already using item", not while a screen is open, ...).
  * The press is skipped entirely while the player is already using an item -
- * a forced release would interrupt eating, drinking or drawing a bow. Only
- * runs while a sword is the selected item; releasing restores the physical
- * right-click state, so holding right click yourself is never interrupted.
+ * a forced release would interrupt eating, drinking or drawing a bow (this is
+ * the {@link KeySequence} start veto). Only runs while a sword is the
+ * selected item; releasing restores the physical right-click state, so
+ * holding right click yourself is never interrupted.
  *
  * <p>Settings: delay (ticks after the hit, 0 = same-tick press, applied on
  * the next client tick) and hold (how many ticks use stays pressed, 1-4;
@@ -30,10 +32,7 @@ public class BlockHit extends Module {
 	private final NumberSetting delay = addSetting(new NumberSetting("Delay", 0, 0, 10, "t"));
 	private final NumberSetting hold = addSetting(new NumberSetting("Hold", 2, 1, 4, "t"));
 
-	/** Ticks until use is pressed, {@code -1} = idle. */
-	private int actionTimer = -1;
-	/** Ticks left with use forced pressed. */
-	private int pressTicksLeft;
+	private final KeySequence sequence = new KeySequence(this::pressAllowed);
 
 	public BlockHit() {
 		super("Block Hit", "Combat", "Right-clicks with the sword shortly after a hit");
@@ -41,12 +40,12 @@ public class BlockHit extends Module {
 
 	@Override
 	public void onAttack(Entity target) {
-		if (this.actionTimer >= 0 || this.pressTicksLeft > 0) {
+		if (this.sequence.isBusy()) {
 			return;
 		}
 
 		Minecraft client = Minecraft.getInstance();
-		if (client == null || client.player == null) {
+		if (client == null || client.player == null || client.options == null) {
 			return;
 		}
 
@@ -58,45 +57,23 @@ public class BlockHit extends Module {
 			return;
 		}
 
-		this.actionTimer = this.delay.getValue();
+		this.sequence.queue(this.delay.getValue(), this.hold.getValue(),
+				new KeyBinding[]{client.options.useKey}, null);
 	}
 
 	@Override
 	public void onTick(Minecraft client) {
-		if (this.pressTicksLeft > 0) {
-			if (--this.pressTicksLeft == 0) {
-				Keys.restore(client.options.useKey);
-			}
-			return;
-		}
-
-		if (this.actionTimer < 0) {
-			return;
-		}
-
-		if (this.actionTimer-- > 0) {
-			return;
-		}
-
-		// Delay elapsed: press use for Hold ticks, vanilla does the rest.
-		this.actionTimer = -1;
-		if (client.player != null && client.player.hasItemInUse()) {
-			// Already using an item (eating, drinking, drawing a bow, an
-			// in-progress block): our forced release would interrupt it, so
-			// skip this blockhit instead.
-			return;
-		}
-		Keys.press(client.options.useKey);
-		this.pressTicksLeft = this.hold.getValue();
+		this.sequence.tick(client);
 	}
 
 	@Override
 	public void restoreKeys() {
-		this.actionTimer = -1;
-		this.pressTicksLeft = 0;
+		this.sequence.cancel();
+	}
+
+	/** Start veto: never press while the player is already using an item. */
+	private boolean pressAllowed() {
 		Minecraft client = Minecraft.getInstance();
-		if (client != null && client.options != null) {
-			Keys.restore(client.options.useKey);
-		}
+		return client == null || client.player == null || !client.player.hasItemInUse();
 	}
 }

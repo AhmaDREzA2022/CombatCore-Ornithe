@@ -19,7 +19,17 @@ import java.util.Random;
  * .damagedTimer}, Feather's name for MCP {@code hurtTime}) is set to 10 by
  * vanilla whenever health actually drops (see {@code LocalClientPlayerEntity
  * .damageTo}), so a rise of the value while it is being watched is a fresh
- * hit - including combo hits that re-set it before it reached 0.
+ * hit - including combo hits that re-set it before it reached 0. The rise is
+ * read at the head of {@code Minecraft.tick()}: incoming packets execute in
+ * the frame loop's scheduled-task drain <em>before</em> {@code tick()} runs,
+ * so the head injection already observes the freshly set timer (the decrement
+ * in {@code baseTick()} happens later, inside the entity tick) - detection and
+ * the jump press are therefore on the same tick as the knockback.
+ *
+ * <p>This module keeps its own tiny press/restore bookkeeping instead of
+ * {@link com.combatcore.util.KeySequence}: its trigger is a damage event, not
+ * a delayed action, and consecutive hits re-press immediately (double-trigger
+ * behaviour is an explicit, documented choice).
  *
  * <p>Settings: chance (%) and minimum hurt time (only trigger when the fresh
  * hurt timer is at least this value; a vanilla full hit sets it to 10).
@@ -51,7 +61,7 @@ public class JumpReset extends Module {
 		this.lastHurtTime = hurtTime;
 
 		if (this.jumpTicksLeft > 0 && --this.jumpTicksLeft == 0) {
-			Keys.restore(client.options.jumpKey);
+			Keys.restore(this, client.options.jumpKey);
 		}
 
 		if (!freshHit || hurtTime < this.minHurtTime.getValue() || !player.onGround) {
@@ -62,7 +72,7 @@ public class JumpReset extends Module {
 			return;
 		}
 
-		Keys.press(client.options.jumpKey);
+		Keys.press(this, client.options.jumpKey);
 		this.jumpTicksLeft = 1;
 	}
 
@@ -71,7 +81,7 @@ public class JumpReset extends Module {
 		this.jumpTicksLeft = 0;
 		Minecraft client = Minecraft.getInstance();
 		if (client != null && client.options != null) {
-			Keys.restore(client.options.jumpKey);
+			Keys.restore(this, client.options.jumpKey);
 		}
 	}
 }

@@ -3,8 +3,10 @@ package com.combatcore.util;
 import net.minecraft.client.options.KeyBinding;
 import org.lwjgl.input.Keyboard;
 
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Small helpers around vanilla key simulation.
@@ -16,13 +18,21 @@ import java.util.Map;
  * restore it - which every module does on disable, when a screen opens, and
  * after a fixed number of ticks.
  *
+ * <p>Forced state is <em>owner-tagged</em>: every {@link #set} names the
+ * module (or {@link KeySequence}) forcing the binding, and the pre-force
+ * snapshot is only written back when the last owner calls {@link #restore}.
+ * That makes it safe for two modules to force the same binding at overlapping
+ * times - e.g. W-Tap and S-Tap both release the forward key - without one
+ * module's restore discarding another's intent.
+ *
  * <p>Restoring deliberately does <em>not</em> use {@code GameOptions.isPressed}
  * (it reads {@code Keyboard.isKeyDown}, which is not reliable in this
  * environment). Instead the pre-force state of the binding is remembered when
- * forcing starts and written back on restore - unless a real key event
- * overwrote the binding in the meantime, in which case that event already
- * carries the fresh physical state and is left alone. Result: a simulated tap
- * never fights the real keyboard, and a player holding a key keeps moving.
+ * the first owner forces it and written back when the last owner releases -
+ * unless a real key event overwrote the binding in the meantime, in which
+ * case that event already carries the fresh physical state and is left alone.
+ * Result: a simulated tap never fights the real keyboard, and a player holding
+ * a key keeps moving.
  *
  * <p>Every state change flows through {@link #set}, so callers must pair
  * forcing with {@link #restore}; {@link #press} is shorthand for forcing on.
@@ -35,45 +45,73 @@ public final class Keys {
 	/** The state we last forced each binding into. */
 	private static final Map<KeyBinding, Boolean> FORCED = new IdentityHashMap<KeyBinding, Boolean>();
 
+	/** Owners currently forcing each binding (identity-based on the owner). */
+	private static final Map<KeyBinding, Set<Object>> OWNERS =
+			new IdentityHashMap<KeyBinding, Set<Object>>();
+
 	private Keys() {
 	}
 
-	/** Force a binding's pressed state (does not touch physical key state). */
-	public static void set(KeyBinding binding, boolean pressed) {
-		if (binding == null || binding.getKeyCode() == 0) {
+	/**
+	 * Force a binding's pressed state on behalf of {@code owner} (does not
+	 * touch physical key state). The pre-force snapshot is taken only when
+	 * the first owner starts forcing this binding.
+	 */
+	public static void set(Object owner, KeyBinding binding, boolean pressed) {
+		if (owner == null || binding == null || binding.getKeyCode() == 0) {
 			return;
 		}
 
-		if (!PRE_FORCE.containsKey(binding)) {
+		Set<Object> owners = OWNERS.get(binding);
+		if (owners == null) {
+			owners = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
+			OWNERS.put(binding, owners);
+		}
+		if (owners.isEmpty()) {
 			// First force of this run: remember what vanilla believed so far
 			// (the event-maintained state, i.e. the physical key).
 			PRE_FORCE.put(binding, Boolean.valueOf(binding.isPressed()));
 		}
 
+		owners.add(owner);
 		FORCED.put(binding, Boolean.valueOf(pressed));
 		KeyBinding.set(binding.getKeyCode(), pressed);
 	}
 
-	/** Press a binding for this tick. */
-	public static void press(KeyBinding binding) {
-		set(binding, true);
+	/** Press a binding for this tick on behalf of {@code owner}. */
+	public static void press(Object owner, KeyBinding binding) {
+		set(owner, binding, true);
 	}
 
 	/**
-	 * Undo a forced state. If no key event intervened during the forced
-	 * window, the pre-force state is written back; otherwise the binding
-	 * already holds fresh physical state from that event and is left as is.
+	 * Undo {@code owner}'s forced state. If other owners are still forcing the
+	 * binding, nothing happens yet; once the last owner releases, the
+	 * pre-force state is written back (unless a real key event intervened
+	 * meanwhile, in which case the binding already holds fresh physical state
+	 * and is left as is).
 	 */
-	public static void restore(KeyBinding binding) {
-		if (binding == null) {
+	public static void restore(Object owner, KeyBinding binding) {
+		if (owner == null || binding == null) {
+			return;
+		}
+
+		Set<Object> owners = OWNERS.get(binding);
+		if (owners == null || !owners.remove(owner)) {
+			// Never forced by this owner - the binding is already event-accurate.
+			return;
+		}
+
+		if (!owners.isEmpty()) {
+			// Another module still forces this binding: keep the forced state
+			// and the pre-force snapshot until the last owner releases.
 			return;
 		}
 
 		Boolean pre = PRE_FORCE.remove(binding);
 		Boolean forcedTo = FORCED.remove(binding);
+		OWNERS.remove(binding);
 
 		if (pre == null || forcedTo == null) {
-			// Never forced by us - the binding is already event-accurate.
 			return;
 		}
 
