@@ -39,6 +39,13 @@ public class STap extends Module {
 			return;
 		}
 
+		// Only meaningful while sprinting - otherwise it is just a movement
+		// stutter.
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null || !client.player.isSprinting()) {
+			return;
+		}
+
 		this.actionTimer = this.delay.getValue();
 	}
 

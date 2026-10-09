@@ -43,6 +43,13 @@ public class WTap extends Module {
 			return; // a tap is already queued or running
 		}
 
+		// Only meaningful while sprinting - otherwise it is just a movement
+		// stutter. Checked before the chance roll so nothing is consumed.
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null || !client.player.isSprinting()) {
+			return;
+		}
+
 		if (this.random.nextInt(100) >= this.chance.getValue()) {
 			return;
 		}
